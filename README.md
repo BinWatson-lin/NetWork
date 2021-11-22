@@ -5,4 +5,5 @@ Add index
 
  - feature-A
  - Fix B
+ - feature-C;
 
