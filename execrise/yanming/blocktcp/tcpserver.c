@@ -1,11 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <errno.h>
-#include <unistd.h>
+#include "../lib/common.h"
 
 /*
 // IPV4套接字地址，32bit值.
