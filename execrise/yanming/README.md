@@ -1,6 +1,8 @@
 
 
+# 一、网络编程
 
+## 1. 协议族
 
 ### 通用套接字地址
 
@@ -135,7 +137,7 @@ enum
 }
 ```
 
-## 接口定义
+## 2. 接口定义
 
 ### socket
 
@@ -147,9 +149,9 @@ int socket(int domain, int type, int protocol)
 
 **type** 可用的值是：
 
-- SOCK_STREAM: 表示的是字节流，对应 TCP；
-- SOCK_DGRAM： 表示的是数据报，对应 UDP；
-- SOCK_RAW: 表示的是原始套接字。
+- `SOCK_STREAM` : 表示的是字节流，对应 TCP；
+- `SOCK_DGRAM` ： 表示的是数据报，对应 UDP；
+- `SOCK_RAW` : 表示的是原始套接字。
 
 ### bind
 
@@ -159,12 +161,12 @@ bind(int fd, sockaddr * addr, socklen_t len)
 
  bind 函数后面的第二个参数是通用地址格式 `sockaddr * addr`。
 
-这里有一个地方值得注意，那就是虽然接收的是$通用地址格式$，实际上传入的参数可能是 IPv4、IPv6 或者本地套接字格式。bind 函数会根据 `len` 字段判断传入的参数 `addr` 该怎么解析，`len` 字段表示的就是传入的地址长度，它是一个可变值。
+这里有一个地方值得注意，那就是虽然接收的是**通用地址格式**，实际上传入的参数可能是 IPv4、IPv6 或者本地套接字格式。bind 函数会根据 `len` 字段判断传入的参数 `addr` 该怎么解析，`len` 字段表示的就是传入的地址长度，它是一个可变值。
 
 > ```c
 > struct sockaddr_in name;
-> bind (sock, (struct sockaddr *) &name, sizeof (name)
-> name.sin_addr.s_addr = htonl (INADDR_ANY); /* IPV4通配地址 */
+> bind (sock, (struct sockaddr *) &name, sizeof (name));
+> name.sin_addr.s_addr = htonl(INADDR_ANY); /* IPV4通配地址 */
 > ```
 
 ### listen
@@ -199,7 +201,9 @@ int connect(int sockfd, const struct sockaddr *servaddr, socklen_t addrlen)
 
 > 客户在调用函数 connect 前不必非得调用 bind 函数，因为如果需要的话，内核会确定源 IP 地址，并按照一定的算法选择一个临时端口作为源端口。
 
-### send
+### 字节流
+
+#### send
 
 ```C
 int send(int socketfd, const void * msg, int len, unsigned int falgs);
@@ -240,7 +244,80 @@ int send(int socketfd, const void * msg, int len, unsigned int falgs);
 
     - EINVAL 传给系统调用的参数不正确
 
-### inet_pton
+### 数据报
+
+#### recvfrom
+
+```c
+#include <sys/socket.h>
+ssize_t recvfrom(int sockfd, void *buff, size_t nbytes, int flags, 
+　　　　　　　　　　struct sockaddr *from, socklen_t *addrlen); 
+```
+
+- `sockfd` 是本地创建的套接字描述符
+
+- `buff` 指向本地的缓存
+
+- `nbytes` 表示最大接收数据字节。
+- 第四个参数 `flags` 是和 I/O 相关的参数，这里我们还用不到，设置为 0。
+- 后面两个参数 `from` 和 `addrlen`，实际上是$返回$对端发送方的地址和端口等信息，这和 TCP 非常不一样，TCP 是通过 accept 函数拿到的描述字信息来决定对端的信息。另外 UDP 报文每次接收都会获取对端的信息，也就是说报文和报文之间是没有上下文的。
+
+#### sendto
+
+```c
+#include <sys/socket.h>
+ssize_t sendto(int sockfd, const void *buff, size_t nbytes, int flags,
+                const struct sockaddr *to, socklen_t addrlen); 
+```
+
+- `sockfd` 是本地创建的套接字描述符
+- -`buff` 指向发送的缓存
+- -`nbytes` 表示发送字节数。
+- 第四个参数 flags 依旧设置为 0。后面两个参数 `to` 和 `addrlen`，表示发送的对端地址和端口等信息。
+
+### close
+
+```c
+int close(int sockfd)
+```
+
+使用 close 函数关闭连接有两个需要明确的地方。
+
+- close 函数只是把套接字**引用计数**减 1，未必会立即关闭连接；
+
+- close 函数如果在套接字引用计数达到 0 时，立即终止读和写两个方向的数据传送。
+
+### shutdown
+
+```c
+int shutdown(int sockfd, int howto)
+```
+
+- `howto` 是这个函数的设置选项，它的设置有三个主要选项：
+
+  - `SHUT_RD(0)`：关闭连接的“读”这个方向，对该套接字进行读操作直接返回 `EOF`。
+
+    从数据角度来看，套接字上接收缓冲区已有的数据将被丢弃，如果再有新的数据流到达，会对数据进行 ACK，然后悄悄地丢弃。也就是说，对端还是会接收到 ACK，在这种情况下根本不知道数据已经被丢弃了。
+
+  - `SHUT_WR(1)`：关闭连接的“写”这个方向，这就是常被称为”半关闭“的连接。
+
+    此时，不管套接字**引用计数的值**是多少，都会直接关闭连接的写方向。套接字上发送缓冲区已有的数据将被立即发送出去，并发送一个 `FIN` 报文给对端。应用程序如果对该套接字进行写操作会报错。
+
+  - `SHUT_RDWR(2)`：相当于 `SHUT_RD` 和 `SHUT_WR` 操作各一次，关闭套接字的读和写两个方向。
+
+close与shutdown的区别：
+
+- 第一个差别：close 会关闭连接，并释放所有连接对应的资源，而 shutdown 并不会释放掉套接字和所有的资源。
+- 第二个差别：close 存在引用计数的概念，并不一定导致该套接字不可用；shutdown 则不管引用计数，直接使得该套接字不可用，如果有别的进程企图使用该套接字，将会受到影响。
+- 第三个差别：close 的引用计数导致不一定会发出 FIN 结束报文，而 shutdown 则总是会发出 FIN 结束报文，这在我们打算关闭连接通知对端的时候，是非常重要的。
+
+
+
+
+
+### 辅助
+
+#### inet_pton
 
 ```c
 #include <sys/types.h>
@@ -255,3 +332,106 @@ int inet_pton(int af, const char *src, void *dst);
 
 
 
+### IO多路复用
+
+#### select
+
+```c
+#include <sys/select.h>
+#include <sys/time.h>
+int select(int maxfd, fd_set* readset, fd_set* writeset, fd_set* exceptset, 
+           const struct timeval* timeout);
+```
+
+select函数共有5个参数，其中参数和返回值：
+
+- `maxfd`：监视对象文件描述符数量。
+
+- `readset`：将所有关注“是否存在待读取数据”的文件描述符注册到 `fd_set` 变量，并传递其地址值。
+
+- `writeset`： 将所有关注“是否可传输无阻塞数据”的文件描述符注册到 `fd_set` 变量，并传递其地址值。
+
+- `exceptset`：将所有关注“是否发生异常”的文件描述符注册到 `fd_set` 变量，并传递其地址值。
+
+- `timeout`：调用select后，为防止陷入无限阻塞状态，传递超时信息。
+
+- 返回值：
+
+  - 错误返回 `-1`
+  - 超时返回 `0`
+  - 当关注的事件返回时，返回大于 `0` 的值，该值是发生事件的文件描述符数。
+
+  select辅助函数：
+
+- `FD_ZERO(fd_set* fdset)`： 将 `fd_set` 变量的所有位初始化为 `0`。
+
+- `FD_SET（int fd, fd_set* fdset）`：在参数 `fd_set` 指向的变量中注册文件描述符 `fd` 的信息。
+
+- `FD_CLR(int fd, fd_set* fdset)`：参数 `fd_set` 指向的变量中清除文件描述符 `fd` 的信息。
+
+- `FD_ISSET(int fd, fd_set* fdset)`：若参数 `fd_set` 指向的变量中包含文件描述符 `fd` 的信息，则返回真。
+
+
+
+```
+1) SIGHUP        2) SIGINT          3) SIGQUIT         4) SIGILL         5) SIGTRAP
+6) SIGABRT       7) SIGBUS          8) SIGFPE          9) SIGKILL       10) SIGUSR1
+11) SIGSEGV      12) SIGUSR2        13) SIGPIPE        14) SIGALRM       15) SIGTERM
+16) SIGSTKFLT    17) SIGCHLD        18) SIGCONT        19) SIGSTOP       20) SIGTSTP
+21) SIGTTIN      22) SIGTTOU        23) SIGURG         24) SIGXCPU       25) SIGXFSZ
+26) SIGVTALRM    27) SIGPROF        28) SIGWINCH       29) SIGIO         30) SIGPWR
+31) SIGSYS       34) SIGRTMIN       35) SIGRTMIN+1     36) SIGRTMIN+2    37) SIGRTMIN+3
+38) SIGRTMIN+4   39) SIGRTMIN+5     40) SIGRTMIN+6     41) SIGRTMIN+7    42) SIGRTMIN+8
+43) SIGRTMIN+9   44) SIGRTMIN+10    45) SIGRTMIN+11    46) SIGRTMIN+12   47) SIGRTMIN+13
+48) SIGRTMIN+14  49) SIGRTMIN+15    50) SIGRTMAX-14    51) SIGRTMAX-13   52) SIGRTMAX-12
+53) SIGRTMAX-11  54) SIGRTMAX-10    55) SIGRTMAX-9     56) SIGRTMAX-8    57) SIGRTMAX-7
+58) SIGRTMAX-6   59) SIGRTMAX-5     60) SIGRTMAX-4     61) SIGRTMAX-3    62) SIGRTMAX-2
+63) SIGRTMAX-1   64) SIGRTMAX
+```
+
+函数原型：
+
+### 信号处理
+
+#### signal
+
+```c
+typedef void (*sighandler_t)(int);
+sighandler_t (int signum, sighandler_t handler);
+```
+
+参数解释：
+
+- `signum`：更改的信号值
+
+- handler：函数指针，要更改的动作是什么
+
+  > 实际上，该函数内部也调用了 `sigaction` 函数。
+
+#### sigprocmask
+
+```c
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+```
+
+参数解释：
+
+- how，该做什么样的操作
+  - SIG_BLOCK：设置信号为阻塞
+  - SIG_UNBLOCK：解除信号阻塞
+  - SIG_SETMASK：替换阻塞位图
+- set：用来设置阻塞位图
+  - SIG_BLOCK：设置某个信号为阻塞，block（new） = block（old） | set
+  - SIG_UNBLOCK：解除某个信号阻塞，block（new）= block（old） & （~set）
+  - SIG_SETMASK：替换阻塞位图，block（new）= set
+- oldset：原来的阻塞位图
+
+
+
+
+
+
+
+### string.h
+
+[C 标准库 –  | 菜鸟教程 (runoob.com)](https://www.runoob.com/cprogramming/c-standard-library-stdio-h.html)
