@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "message_t.h": "c",
+        "common.h": "c",
+        "signal_hander.h": "c"
+    }
+}
